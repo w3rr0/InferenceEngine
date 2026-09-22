@@ -1,0 +1,13 @@
+[project]
+name = "model_management"
+version = "0.1.0"
+description = "Zarządzanie modelami"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # Zależności pytonowe, np. pydantic, fastapi, itp.
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
