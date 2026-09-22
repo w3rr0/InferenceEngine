@@ -2,7 +2,12 @@
 name = "inference-engine"
 version = "0.0.0"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "model_management"
+]
+
+[tool.uv.sources]
+model_management = { workspace = true }
 
 [tool.uv.workspace]
 members = [
