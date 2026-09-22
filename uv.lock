@@ -1,0 +1,19 @@
+version = 1
+revision = 3
+requires-python = ">=3.14"
+
+[manifest]
+members = [
+    "inference-engine",
+    "model-management",
+]
+
+[[package]]
+name = "inference-engine"
+version = "0.0.0"
+source = { virtual = "." }
+
+[[package]]
+name = "model-management"
+version = "0.1.0"
+source = { editable = "model_management" }
