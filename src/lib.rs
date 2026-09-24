@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 
 pub mod memory;
+pub mod scheduler;
 
 /// A Python module implemented in Rust.
 #[pymodule]
