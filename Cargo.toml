@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "block_manager"
+    "block_manager", 
+    "ffi"
 ]
