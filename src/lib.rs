@@ -1,5 +1,7 @@
 use pyo3::prelude::*;
 
+pub mod memory;
+
 /// A Python module implemented in Rust.
 #[pymodule]
 mod inference_engine {
