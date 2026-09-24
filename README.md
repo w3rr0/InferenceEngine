@@ -13,32 +13,31 @@
 
 ## Workflow
 
-1. Odbiór i Tokenizacja (Rust - Serwer HTTP)
-Serwer sieciowy (np. Axum) odbiera zapytanie REST lub WebSocket z tekstem. Używając biblioteki `tokenizers`, zamienia tekst promptu na tablicę liczb (`input_ids`). Utworzony obiekt `Request` trafia do kolejki `pending` w obiekcie Schedulera.
+1. INICJALIZACJA (Python & Rust)
+   Python wczytuje wagi modelu i inicjalizuje obiekt Engine z modułu napisanego w Ruście (np. `engine = Engine(config)`). Engine wewnętrznie tworzy Schedulera, Block Managera i (docelowo) odpala serwer API w tle, który zaczyna przyjmować żądania od klientów.
 
-2. Alokacja Pamięci (Rust - Block Manager)
-Przed dopuszczeniem żądania do obliczeń, Scheduler pyta Block Managera o dostępność pamięci. Jeśli prompt ma 35 tokenów, a jeden blok mieści 16 tokenów, Block Manager rezerwuje 3 fizyczne bloki w VRAM i przypisuje je do tego żądania, tworząc jego strukturę `block_tables` (mapowanie adresów logicznych na fizyczne).
+2. ŻĄDANIE NOWEJ PRACY (Python -> Rust)
+   Główna pętla w Pythonie wywołuje `batch = engine.get_next()`. Jeśli nie ma nowych ani trwających requestów, Rust zwalnia blokadę GIL (Python::allow_threads) i usypia ten wątek, dopóki w tle nie pojawi się nowe żądanie.
 
-3. Tworzenie Batcha (Rust - Scheduler)
-W głównej pętli silnika Scheduler wybiera żądania z kolejki `pending` (wymagające fazy prefill) oraz `active` (wymagające wygenerowania kolejnego tokena). Grupuje ich tokeny i łączy ich indywidualne `block_tables` w jedną, zbiorczą strukturę. 
+3. BUDOWANIE BATCHA (Rust)
+   Gdy są dostępne requesty, Scheduler wybiera odpowiednią ich liczbę z kolejek `pending` (nowe prompt'y) i `active` (w trakcie generacji). Block Manager alokuje wirtualne i fizyczne bloki w KV Cache dla tych żądań i generuje mapowanie pamięci.
 
-4. Przejście przez most FFI (Rust -> Python)
-Za pomocą PyO3, z poziomu Rusta wywoływana jest funkcja Pythona. Rust przekazuje do niej zaledwie kilka argumentów: spłaszczony tensor wejściowy (tokeny), pozycje sekwencji dla każdego żądania oraz zbiorczą macierz `block_tables`.
+4. ZWROT METADANYCH (Rust -> Python)
+   Funkcja `get_next()` zwraca do Pythona obiekt `BatchData`. Zawiera on wyłącznie płaskie informacje niezbędne dla GPU: wektor wejściowych `input_ids`, złączoną macierz `block_tables` oraz długości kontekstów (sequence lengths).
 
-5. Przejście przez Graf Modelu (Python - PyTorch)
-Python przejmuje kontrolę. Przekazane dane przechodzą przez kolejne warstwy modelu LLM (np. Llama). Wykonywane są standardowe operacje embeddingu, warstwy MLP i normalizacje przy użyciu natywnych funkcji PyTorcha.
+5. FORWARD PASS I PAGED ATTENTION (Python - PyTorch/GPU)
+   Python przekazuje metadane do warstw modelu (Llama). Obliczenia wykonywane są na GPU. Gdy dane docierają do warstwy Attention, wykorzystywane są przekazane `block_tables` do zlokalizowania i pobrania pofragmentowanych bloków KV Cache bezpośrednio z fizycznej pamięci VRAM.
 
-6. Wywołanie PagedAttention (Python -> Triton/CUDA)
-Gdy sygnał dociera do warstwy uwagi (Attention), skrypt w Pythonie wywołuje dedykowany kernel PagedAttention. Kernel ten omija standardowe ciągłe bufory pamięci. Zamiast tego odczytuje dostarczoną macierz `block_tables` i pobiera klucze (Keys) oraz wartości (Values) bezpośrednio z pofragmentowanych bloków w pamięci fizycznej VRAM, generując wynik atencji.
+6. PRÓBKOWANIE - SAMPLING (Python)
+   Z wygenerowanych w ostatniej warstwie logitów wyliczane są ID nowych tokenów (np. przez argmax dla każdego zapytania w batchu).
 
-7. Próbkowanie (Sampling) i Zwrot Tokenów (Python -> Rust)
-Na samym końcu grafu wyliczane są prawdopodobieństwa dla kolejnych słów. Python dokonuje próbkowania (np. Argmax lub Top-K), uzyskując ID nowego tokena dla każdego zapytania w batchu. Tablica wygenerowanych tokenów jest zwracana przez granicę FFI z powrotem do Rusta.
+7. PRZEKAZANIE WYNIKÓW (Python -> Rust)
+   Python wywołuje `engine.step(new_tokens)`, przekazując listę nowo wygenerowanych ID z powrotem do Rusta.
 
-8. Strumieniowanie do Klienta (Rust - Serwer HTTP)
-Rust odbiera nowe ID tokenów, dekoduje je z powrotem na tekst i asynchronicznie przesyła do użytkownika otwartym kanałem (Server-Sent Events). Użytkownik widzi, jak na ekranie pojawia się kolejne słowo.
+8. AKTUALIZACJA STANU (Rust)
+   Rust odbiera nowe tokeny. Scheduler przypisuje je do odpowiednich requestów.
+- Jeżeli token to <EOS> (Koniec), request jest kończony, Block Manager zwalnia przypisaną mu pamięć, a (docelowo) klient HTTP dostaje sygnał o zakończeniu.
+- Jeżeli request wymaga dalszej generacji, Block Manager sprawdza, czy ostatni blok jest pełny - jeśli tak, alokuje nowy fizyczny blok KV Cache, a request wraca do kolejki `active`.
 
-9. Aktualizacja Stanu i Cykl Życia (Rust - Scheduler)
-Scheduler dopisuje wygenerowany token do historii żądania. Następnie weryfikuje zajętość pamięci: jeśli ostatni fizyczny blok przypisany do tego żądania został właśnie zapełniony nowym tokenem, Block Manager alokuje z puli VRAM jeden nowy, pusty blok i dodaje go do `block_tables`. Żądanie pozostaje w kolejce `active`. Całość wraca do kroku 3.
-
-10. Zakończenie i Czyszczenie Pamięci (Rust - Block Manager)
-Gdy zwrócony token to <EOS> (End of Sequence) lub osiągnięto maksymalną długość, serwer ostatecznie zamyka połączenie HTTP. Scheduler usuwa żądanie z kolejki, a Block Manager oznacza wszystkie jego fizyczne bloki w VRAM jako "wolne", natychmiast udostępniając tę pamięć dla nowych zapytań z kroku 2.
+9. ZAPĘTLENIE
+   Proces wraca do punktu 2 - Python od razu ponownie wywołuje `engine.get_next()`.
