@@ -41,3 +41,56 @@
 
 9. ZAPĘTLENIE
    Proces wraca do punktu 2 - Python od razu ponownie wywołuje `engine.get_next()`.
+
+## Project Structure
+
+```text
+my_infer_engine/
+├── Cargo.toml               # Zależności Rust (pyo3, tokio, axum, serde, itp.)
+├── pyproject.toml           # Konfiguracja Maturin (zależności Pythona, np. torch)
+├── .gitignore
+├── README.md
+│
+├── src/                     # CZĘŚĆ RUSTOWA (Control Plane)
+│   ├── lib.rs               # Punkt wejścia FFI (PyO3). Eksportuje tylko klasę Engine.
+│   ├── engine.rs            # Rdzeń Rusta: łączy Schedulera, Block Managera i komunikację z Tokio.
+│   │
+│   ├── memory/              # MODULE: ZARZĄDZANIE PAMIĘCIĄ (VRAM)
+│   │   ├── mod.rs           # Udostępnia publiczne interfejsy modułu.
+│   │   ├── allocator.rs     # Główna logika (alokacja/zwalnianie fizycznych bloków, OOM).
+│   │   ├── block.rs         # Definicje struktur (Block, BlockTable).
+│   │   └── tests.rs         # Testy jednostkowe Rusta dla Block Managera (krytyczne!).
+│   │
+│   ├── scheduler/           # MODULE: BATCHING I KOLEJKOWANIE
+│   │   ├── mod.rs
+│   │   ├── batch.rs         # Logika sklejania zapytań (prefill i decode) w jeden Batch.
+│   │   └── request.rs       # Cykl życia i stan pojedynczego zapytania.
+│   │
+│   ├── server/              # MODULE: WARSTWA SIECIOWA I ASYNCHRONICZNOŚĆ
+│   │   ├── mod.rs
+│   │   ├── router.rs        # Konfiguracja Axum (endpointy REST).
+│   │   └── sse.rs           # Implementacja Server-Sent Events (strumieniowanie tokenów).
+│   │
+│   └── api/                 # MODULE: MODELE DANYCH (Komunikacja ze światem)
+│       ├── mod.rs
+│       └── openai.rs        # Struktury żądań/odpowiedzi kompatybilne z OpenAI API.
+│
+├── my_infer_engine/         # CZĘŚĆ PYTHONOWA (Data Plane)
+│   ├── __init__.py          # Ładuje skompilowaną binarkę Rusta (`from .my_infer_engine import *`).
+│   ├── __main__.py          # Punkt startowy aplikacji (pozwala uruchomić: `python -m my_infer_engine`).
+│   ├── runner.py            # Główna pętla generacji: wywołuje `get_next()`, model i `step()`.
+│   │
+│   ├── models/              # MODULE: ARCHITEKTURY SIECI (PyTorch)
+│   │   ├── __init__.py
+│   │   ├── llama.py         # Implementacja warstw (MLP, Norm) dla np. TinyLlama.
+│   │   └── weights.py       # Logika ładowania plików `.safetensors`.
+│   │
+│   └── attention/           # MODULE: MECHANIZMY UWAGI
+│       ├── __init__.py
+│       ├── flex_attn.py     # Implementacja PagedAttention przy użyciu PyTorch (na początek).
+│       └── triton_kernel.py # Przyszłościowa, szybka implementacja w OpenAI Triton.
+│
+└── tests/                   # TESTY (Python / Integracyjne)
+├── test_attention.py    # Sprawdza czy Twoje PagedAttention zwraca to samo co naiwna atencja.
+└── test_e2e.py          # Zrzuca testowe zapytania przez HTTP i sprawdza wyniki.
+```
