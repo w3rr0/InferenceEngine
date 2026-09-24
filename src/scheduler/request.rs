@@ -36,12 +36,8 @@ impl Request {
     /// For Active (decode): last generated token.
     /// For Pending (prefill): whole prompt.
     pub fn get_input_tokens(&self) -> Vec<u32> {
-        if self.status == RequestStatus::Active {
-            if let Some(&last_token) = self.generated_tokens.last() {
-                vec![last_token]
-            } else {
-                vec![]
-            }
+        if let Some(&last_token) = self.generated_tokens.last() {
+            vec![last_token]
         } else {
             self.prompt.clone()
         }
