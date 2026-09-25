@@ -18,5 +18,4 @@ dependencies = [
 ]
 
 [tool.maturin]
-generate-stubs = true
 module-name = "inference_engine.engine_core"
