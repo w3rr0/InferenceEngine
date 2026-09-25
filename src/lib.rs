@@ -5,9 +5,7 @@ pub mod engine;
 use pyo3::prelude::*;
 
 #[pymodule]
-#[pyo3(name = "engine_core")]
-mod inference_engine {
-
+mod engine_core {
     #[pymodule_export]
     use super::engine::Engine;
 }
