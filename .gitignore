@@ -1,6 +1,13 @@
+# environment
 .venv/
-target/
-.idea/
 
-# temporary
+# build artefact
+target/
+*.so
+
+# IDE
+.idea/
+.vscode/
+
+# only for now
 .github/
