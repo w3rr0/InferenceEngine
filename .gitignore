@@ -4,6 +4,7 @@
 # build artefact
 target/
 *.so
+*.pyi
 
 # IDE
 .idea/
