@@ -4,10 +4,15 @@ build-backend = "maturin"
 
 [project]
 name = "inference-engine"
-requires-python = ">=3.8"
+requires-python = ">=3.14"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+dependencies = [
+    "torch",
+    "transformers",
+    "accelerate",
+]
