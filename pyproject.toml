@@ -3,7 +3,7 @@ requires = ["maturin>=1.15,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "inference-engine"
+name = "inference_engine"
 requires-python = ">=3.14"
 classifiers = [
     "Programming Language :: Rust",
@@ -16,3 +16,7 @@ dependencies = [
     "transformers",
     "accelerate",
 ]
+
+[tool.maturin]
+generate-stubs = true
+module-name = "inference_engine.engine_core"
