@@ -1,25 +1,7 @@
 import torch
 import torch.nn as nn
-from transformers.models.llama.modeling_llama import LlamaMLP, rotate_half
+from transformers.models.llama.modeling_llama import LlamaMLP, LlamaRotaryEmbedding, apply_rotary_pos_emb
 from inference_engine.attention.flex import PagedKVCache, paged_attention
-
-
-class RotaryEmbedding(nn.Module):
-    def __init__(self, head_dim: int, max_position: int = 2048, base: float = 10000.0):
-        super().__init__()
-        inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2).float() / head_dim))
-        t = torch.arange(max_position).float()
-        freqs = torch.outer(t, inv_freq)
-        emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos(), persistent=False)
-        self.register_buffer("sin_cached", emb.sin(), persistent=False)
-
-    def forward(self, q: torch.Tensor, k: torch.Tensor, positions: torch.Tensor):
-        cos = self.cos_cached[positions].unsqueeze(1).to(q.dtype)
-        sin = self.sin_cached[positions].unsqueeze(1).to(q.dtype)
-        q_embed = (q * cos) + (rotate_half(q) * sin)
-        k_embed = (k * cos) + (rotate_half(k) * sin)
-        return q_embed, k_embed
 
 
 class LlamaAttention(nn.Module):
@@ -38,18 +20,21 @@ class LlamaAttention(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        rope: RotaryEmbedding,
-        positions: torch.Tensor,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
         kv_cache: PagedKVCache,
         block_tables: list[list[int]],
         seq_lens: list[int],
         is_prefill: bool,
     ) -> torch.Tensor:
-        q = self.q_proj(x).view(-1, self.num_heads, self.head_dim)
-        k = self.k_proj(x).view(-1, self.num_kv_heads, self.head_dim)
+        q = self.q_proj(x).view(1, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(x).view(1, -1, self.num_kv_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(x).view(-1, self.num_kv_heads, self.head_dim)
 
-        q, k = rope(q, k, positions)
+        cos, sin = position_embeddings
+        q, k = apply_rotary_pos_emb(q, k, cos, sin)
+
+        q = q.transpose(1, 2).squeeze(0)
+        k = k.transpose(1, 2).squeeze(0)
 
         attn_out = paged_attention(
             q, k, v, kv_cache, self.layer_idx, block_tables, seq_lens, is_prefill
@@ -65,9 +50,14 @@ class LlamaDecoderLayer(nn.Module):
         self.input_layernorm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
-    def forward(self, x, rope, positions, kv_cache, block_tables, seq_lens, is_prefill):
+    def forward(self, x, position_embeddings, kv_cache, block_tables, seq_lens, is_prefill):
         x = x + self.self_attn(
-            self.input_layernorm(x), rope, positions, kv_cache, block_tables, seq_lens, is_prefill
+            self.input_layernorm(x),
+            position_embeddings,
+            kv_cache,
+            block_tables,
+            seq_lens,
+            is_prefill,
         )
         x = x + self.mlp(self.post_attention_layernorm(x))
         return x
@@ -83,11 +73,7 @@ class LlamaForCausalLM(nn.Module):
         )
         self.norm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        self.rope = RotaryEmbedding(
-            config.hidden_size // config.num_attention_heads,
-            config.max_position_embeddings,
-            getattr(config, "rope_theta", 10000.0),
-        )
+        self.rotary_emb = LlamaRotaryEmbedding(config=config)
 
     def forward(
         self,
@@ -99,11 +85,15 @@ class LlamaForCausalLM(nn.Module):
         is_prefill: bool,
     ) -> torch.Tensor:
         x = self.embed_tokens(flat_tokens)
+
+        position_embeddings = self.rotary_emb(x.unsqueeze(0), positions.unsqueeze(0))
+
         for layer in self.layers:
-            x = layer(x, self.rope, positions, kv_cache, block_tables, seq_lens, is_prefill)
+            x = layer(
+                x, position_embeddings, kv_cache, block_tables, seq_lens, is_prefill
+            )
         x = self.norm(x)
 
-        # W fazie prefill interesują nas logity tylko dla OSTATNIEGO tokena każdego promptu
         if is_prefill:
             last_indices = torch.tensor(seq_lens, device=x.device).cumsum(0) - 1
             x = x[last_indices]
