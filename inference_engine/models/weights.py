@@ -2,6 +2,7 @@ import glob
 import os
 import torch
 from huggingface_hub import snapshot_download
+from huggingface_hub.utils import disable_progress_bars
 from safetensors.torch import load_file
 from transformers import AutoConfig
 from inference_engine.models.llama import LlamaForCausalLM
@@ -10,6 +11,8 @@ from inference_engine.models.llama import LlamaForCausalLM
 def load_llama_model(
         model_id: str, device: torch.device, dtype: torch.dtype
 ) -> LlamaForCausalLM:
+    disable_progress_bars()     # TODO: enable in dev profile with terminal emulation (disable when writing to file)
+
     config = AutoConfig.from_pretrained(model_id)
 
     # Model initialization on the target type and device
