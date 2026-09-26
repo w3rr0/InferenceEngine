@@ -3,6 +3,7 @@
 
 # build artefact
 target/
+__pycache__/
 *.so
 *.pyi
 
