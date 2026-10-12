@@ -9,3 +9,10 @@ run:
 clean:
 	cargo clean
 	find . -path "./.venv" -prune -o \( -name "*.so" -o -name "*.pyd" -o -name "*.pyi" -o -name "__pycache__" \) -exec rm -rf {} +
+
+format:
+	uvx ruff format
+
+check:
+	uvx ruff check
+	uvx typos
