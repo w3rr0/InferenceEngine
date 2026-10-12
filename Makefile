@@ -16,3 +16,4 @@ format:
 check:
 	uvx ruff check
 	uvx typos
+	cargo check
