@@ -42,4 +42,16 @@ impl Request {
             self.prompt.clone()
         }
     }
+
+    pub fn is_finished(&self) -> bool {
+        if self.seq_len() >= self.max_tokens {
+            return true;
+        }
+        if let Some(&last_token) = self.generated_tokens.last() {
+            if last_token == self.eos_token_id {
+                return true;
+            }
+        }
+        false
+    }
 }
