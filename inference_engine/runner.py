@@ -44,17 +44,22 @@ class EngineRunner:
             device=self.device,
         )
 
-    def add_prompt(self, prompt_text: str):
+    def add_request(self, prompt_text: str, max_tokens: int = 150):
         tokens = self.tokenizer.encode(prompt_text)
-        self.rust_engine.add_dummy_request(tokens)
+        self.rust_engine.add_request(
+            prompt=tokens,
+            max_tokens=max_tokens,
+            eos_token_id=self.tokenizer.eos_token_id,
+        )
 
     @torch.inference_mode()
-    def run_steps(self, num_steps: int = 10):
-        outputs: dict[int, list[int]] = {}
+    def run(self):
+        step = 0
 
-        for step_idx in range(num_steps):
+        while self.rust_engine.has_unfinished_requests():
             batch = self.rust_engine.get_next()
             if batch is None:
+                print("[Runner] All request stop because of lack of VRAM")
                 break
 
             req_ids, input_tokens, block_tables, seq_lens, is_prefill = batch
@@ -72,19 +77,19 @@ class EngineRunner:
             flat_tokens = torch.tensor(flat_tokens_list, dtype=torch.long, device=self.device)
             positions = torch.tensor(positions_list, dtype=torch.long, device=self.device)
 
-            # Passing through a model with PagedAttention
             logits = self.model(
                 flat_tokens, positions, self.kv_cache, block_tables, seq_lens, is_prefill
             )
 
             next_tokens = torch.argmax(logits, dim=-1).tolist()
 
-            # Saving generated tokens for preview and sending them back to Rust
-            for req_id, token in zip(req_ids, next_tokens):
-                outputs.setdefault(req_id, []).append(token)
+            # Show live
+            if not is_prefill:
+                for req_id, token in zip(req_ids, next_tokens):
+                    word = self.tokenizer.decode([token])
+                    print(f"[Req {req_id}]: {word}", flush=True)
 
             self.rust_engine.step(req_ids, next_tokens)
+            step += 1
 
-        for req_id, gen_tokens in outputs.items():
-            text = self.tokenizer.decode(gen_tokens)
-            print(f"\n[Request {req_id}] Generated: {text!r}")  # TODO: change to logger
+        print(f"\n[Runner] Finished after {step} iterations")
