@@ -27,6 +27,11 @@ impl Engine {
         self.scheduler.add_request(req);
     }
 
+    /// Returns `true` if there are unfinished tasks
+    pub fn has_unfinished_requests(&self) -> bool {
+        !self.scheduler.active.is_empty() || !self.scheduler.pending.is_empty()
+    }
+
     /// Returns a batch from the scheduler: (request_ids, input_tokens, block_tables, seq_lens, is_prefill)
     pub fn get_next(&mut self) -> Option<(Vec<u64>, Vec<Vec<u32>>, Vec<Vec<u32>>, Vec<usize>, bool)> {
         if let Some(batch) = self.scheduler.next_batch(&mut self.allocator) {
