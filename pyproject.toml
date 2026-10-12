@@ -17,5 +17,35 @@ dependencies = [
     "accelerate",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "mypy",
+]
+
 [tool.maturin]
 module-name = "inference_engine.engine_core"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = []
+
+[tool.mypy]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "torch.*",
+    "transformers.*",
+    "accelerate.*"
+]
+ignore_missing_imports = true
+
+[tool.typos.default.extend-words]
+maturin = "maturin"
+cpypy = "cpypy"
