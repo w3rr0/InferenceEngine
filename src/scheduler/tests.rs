@@ -6,8 +6,8 @@ fn test_scheduler_prefill_and_decode() {
     let mut allocator = BlockAllocator::new(100, 16);
     let mut scheduler = Scheduler::new(2);
 
-    scheduler.add_request(Request::new(1, vec![10, 20, 30]));
-    scheduler.add_request(Request::new(2, vec![40; 20]));
+    scheduler.add_request(Request::new(1, vec![10, 20, 30], 100, 2));
+    scheduler.add_request(Request::new(2, vec![40; 20], 100, 2));
 
     let prefill_batch = scheduler.next_batch(&mut allocator).unwrap();
 

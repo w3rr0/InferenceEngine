@@ -14,16 +14,20 @@ pub struct Request {
     pub generated_tokens: Vec<u32>,
     pub block_table: BlockTable,
     pub status: RequestStatus,
+    pub max_tokens: usize,
+    pub eos_token_id: u32,
 }
 
 impl Request {
-    pub fn new(id: u64, prompt: Vec<u32>) -> Self {
+    pub fn new(id: u64, prompt: Vec<u32>, max_tokens: usize, eos_token_id: u32) -> Self {
         Self {
             id,
             prompt,
             generated_tokens: Vec::new(),
             block_table: BlockTable::new(),
             status: RequestStatus::Pending,
+            max_tokens,
+            eos_token_id,
         }
     }
 
