@@ -44,7 +44,7 @@ class EngineRunner:
             device=self.device,
         )
 
-    def add_request(self, prompt_text: str, max_tokens: int = 150):
+    def add_request(self, prompt_text: str, max_tokens: int = 512):
         tokens = self.tokenizer.encode(prompt_text)
         self.rust_engine.add_request(
             prompt=tokens,
@@ -81,7 +81,27 @@ class EngineRunner:
                 flat_tokens, positions, self.kv_cache, block_tables, seq_lens, is_prefill
             )
 
-            next_tokens = torch.argmax(logits, dim=-1).tolist()
+            temperature = 0.7
+            top_p = 0.9
+
+            if temperature <= 0:
+                next_tokens = torch.argmax(logits, dim=-1).tolist()
+            else:
+                scaled_logits = logits / temperature
+                probs = torch.softmax(scaled_logits, dim=-1)
+
+                sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+                cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+
+                sorted_indices_to_remove = cumulative_probs > top_p
+                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                sorted_indices_to_remove[..., 0] = 0
+
+                indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                scaled_logits[indices_to_remove] = float('-inf')
+
+                filtered_probs = torch.softmax(scaled_logits, dim=-1)
+                next_tokens = torch.multinomial(filtered_probs, num_samples=1).squeeze(-1).tolist()
 
             # Show live
             if not is_prefill:
