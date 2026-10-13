@@ -24,6 +24,7 @@ dev = [
 
 [tool.maturin]
 module-name = "inference_engine.engine_core"
+manifest-path = "crates/ffi/Cargo.toml"
 
 [tool.ruff]
 target-version = "py314"
