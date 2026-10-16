@@ -1,7 +1,9 @@
 syntax = "proto3";
-package my;
-service MyService {
+package inference;
+
+service Generation {
   rpc Ping (PingRequest) returns (PingResponse);
 }
+
 message PingRequest { string msg = 1; }
 message PingResponse { string msg = 1; }
