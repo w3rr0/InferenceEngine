@@ -1,8 +1,10 @@
 all: build run
 
-build: build-engine build-server
+build:
+	uv run maturin develop --generate-stubs
 
-run: run-engine run-server
+run:
+	uv run inference_engine
 
 clean:
 	cargo clean
@@ -15,15 +17,3 @@ check:
 	uvx ruff check
 	uvx typos
 	cargo check
-
-build-engine:
-	uv run maturin develop --generate-stubs
-
-build-server:
-	cargo build -p server
-
-run-engine:
-	uv run inference_engine
-
-run-server:
-	cargo run -p server
