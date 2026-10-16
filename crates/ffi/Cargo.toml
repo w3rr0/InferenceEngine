@@ -1,5 +1,5 @@
 [package]
-name = "inference-engine-ffi"
+name = "ffi"
 version = "0.1.0"
 edition = "2024"
 
