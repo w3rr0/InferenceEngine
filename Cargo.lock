@@ -95,6 +95,9 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 [[package]]
 name = "engine_core"
 version = "0.1.0"
+dependencies = [
+ "pyo3",
+]
 
 [[package]]
 name = "errno"
@@ -104,6 +107,14 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "ffi"
+version = "0.1.0"
+dependencies = [
+ "engine_core",
+ "pyo3",
 ]
 
 [[package]]
@@ -394,14 +405,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "python_ffi"
-version = "0.1.0"
-dependencies = [
- "engine_core",
- "pyo3",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -578,9 +581,9 @@ checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
 name = "tokio"
-version = "1.53.2"
+version = "1.53.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
+checksum = "ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e"
 dependencies = [
  "bytes",
  "libc",
