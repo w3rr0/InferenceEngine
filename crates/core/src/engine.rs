@@ -1,13 +1,18 @@
 use crate::memory::BlockAllocator;
 use crate::scheduler::{Scheduler, Request};
 
+use pyo3::prelude::*;
+
+#[pyclass(unsendable)]
 pub struct Engine {
     allocator: BlockAllocator,
     scheduler: Scheduler,
     request_counter: u64,
 }
 
+#[pymethods]
 impl Engine {
+    #[new]
     pub fn new(total_blocks: usize, block_size: usize, max_batch_size: usize) -> Self {
         Self {
             allocator: BlockAllocator::new(total_blocks, block_size),

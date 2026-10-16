@@ -3,4 +3,12 @@ name = "engine_core"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "core"
+crate-type = ["cdylib"]
+
 [dependencies]
+pyo3 = { version = "0.29.0",  features = ["experimental-inspect"] }
+
+[package.metadata.maturin]
+module-name = "inference_engine.core"
