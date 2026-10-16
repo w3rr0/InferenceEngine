@@ -23,7 +23,7 @@ dev = [
 ]
 
 [tool.maturin]
-module-name = "inference_engine.core"
+module-name = "inference_engine._bindings"
 manifest-path = "crates/ffi/Cargo.toml"
 
 [tool.ruff]
