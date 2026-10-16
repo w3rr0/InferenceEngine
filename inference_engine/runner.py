@@ -1,7 +1,7 @@
 import torch
 from transformers import PreTrainedTokenizerFast
-import engine_core
 
+from inference_engine.core import Engine
 from inference_engine.attention.flex import PagedKVCache
 from inference_engine.models.weights import load_llama_model
 
@@ -26,7 +26,7 @@ class EngineRunner:
         print(f"[Runner] Launching on device: {self.device} ({self.dtype})") # TODO: change to logger
 
         # Control Plane initialization in rust
-        self.rust_engine = engine_core.Engine(total_blocks, block_size, max_batch_size)
+        self.rust_engine = Engine(total_blocks, block_size, max_batch_size)
 
         # Loading tokenizer and model
         self.tokenizer = PreTrainedTokenizerFast.from_pretrained(model_id)
