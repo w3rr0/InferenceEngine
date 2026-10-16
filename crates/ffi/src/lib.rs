@@ -2,6 +2,11 @@ use pyo3::prelude::*;
 
 #[pymodule(name = "_bindings")]
 mod bindings {
-    #[pymodule_export]
-    use engine_core::engine::Engine;
+    use pyo3::prelude::*;
+    #[pymodule]
+    pub mod core {
+        #[pymodule_export]
+        use engine_core::engine::Engine;
+    }
+
 }
