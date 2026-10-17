@@ -11,6 +11,8 @@ prost = "0.14.4"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 thiserror = "2.0.21"
+hyper = { version = "1", features = ["full"] }
+http-body-util = "0.1.5"
 
 [build-dependencies]
 protoc-bin-vendored = "3.3.0"
