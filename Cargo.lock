@@ -853,6 +853,7 @@ version = "0.1.0"
 dependencies = [
  "http-body-util",
  "hyper",
+ "hyper-util",
  "prost",
  "protoc-bin-vendored",
  "thiserror",
