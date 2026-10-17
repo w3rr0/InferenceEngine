@@ -6,7 +6,7 @@ mod server;
 
 pub use config::Options;
 pub use error::{Error, Result};
-// pub use server::run;
+pub use server::start;
 
 
 pub mod pb {
