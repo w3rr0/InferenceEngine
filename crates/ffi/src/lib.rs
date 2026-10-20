@@ -8,5 +8,11 @@ mod bindings {
         #[pymodule_export]
         use engine_core::engine::Engine;
     }
+    
+    #[pymodule]
+    pub mod server {
+        #[pymodule_export]
+        use ::server::Options;
+    }
 
 }

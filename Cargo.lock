@@ -142,6 +142,7 @@ version = "0.1.0"
 dependencies = [
  "engine_core",
  "pyo3",
+ "server",
 ]
 
 [[package]]
@@ -856,6 +857,7 @@ dependencies = [
  "hyper-util",
  "prost",
  "protoc-bin-vendored",
+ "pyo3",
  "thiserror",
  "tokio",
  "tonic",

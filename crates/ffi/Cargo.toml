@@ -13,3 +13,4 @@ module-name = "inference_engine._bindings"
 [dependencies]
 pyo3 = { version = "0.29.3", features = ["extension-module", "experimental-inspect"] }
 engine_core = { path = "../core" }
+server = { path = "../server", features = ["python"] }
