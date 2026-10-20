@@ -2,6 +2,7 @@ all: build run
 
 build:
 	uv run maturin develop --generate-stubs
+	uv run python scripts/generate_public_stubs.py
 
 run:
 	uv run inference_engine
