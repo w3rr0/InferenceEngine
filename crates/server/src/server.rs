@@ -40,7 +40,7 @@ async fn start_http(addr: SocketAddr) -> Result<()> {
     }
 }
 
-pub async fn start(options: Options) -> Result<()> {
+async fn run(options: Options) -> Result<()> {
     let http_addr = options.http_addr;
     let grpc_addr = options.grpc_addr;
 
@@ -60,3 +60,36 @@ pub async fn start(options: Options) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(feature = "python")]
+#[pyo3::pyfunction]
+#[pyo3(signature = (options = None))]
+pub fn start(options: Option<Options>) -> pyo3::PyResult<()> {
+    let options = options.unwrap_or_default();
+
+    std::thread::Builder::new()
+        .name("inference-server".to_owned())
+        .spawn(move || {
+            crate::init_tracing();
+
+            let runtime = match tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(err) => {
+                    tracing::error!("Could not create Tokio runtime: {}", err);
+                    return;
+                }
+            };
+
+            if let Err(err) = runtime.block_on(run(options)) {
+                tracing::error!("Inference server stopped with error: {}", err);
+            }
+        })
+        .map(|_| ())
+        .map_err(|err| pyo3::exceptions::PyRuntimeError::new_err(err.to_string()))
+}
+
+#[cfg(not(feature = "python"))]
+pub use run as start;
