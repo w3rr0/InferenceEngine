@@ -13,3 +13,6 @@ __pycache__/
 
 # only for now
 .github/
+
+#plugins
+graphify-out/
