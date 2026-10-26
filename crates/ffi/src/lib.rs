@@ -17,6 +17,9 @@ mod bindings {
 
         #[pymodule_export]
         use ::server::start;
+        
+        #[pymodule_export]
+        use ::server::poll_request;
     }
 
 }
