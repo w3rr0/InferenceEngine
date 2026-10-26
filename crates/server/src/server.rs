@@ -1,13 +1,17 @@
 use crate::grpc::GenerationImpl;
-use crate::http::handle_request;
+use crate::http::{handle_request, EngineRequest, RequestQueue};
 use crate::pb::generation_server::GenerationServer;
 use crate::{Options, Result};
 
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
+use std::collections::VecDeque;
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex, OnceLock};
 use tokio::net::TcpListener;
+
+static REQUEST_QUEUE: OnceLock<RequestQueue> = OnceLock::new();
 
 async fn start_grpc(addr: SocketAddr) -> Result<()> {
     tracing::info!("Starting GRPC server on {}", addr);
@@ -21,7 +25,10 @@ async fn start_grpc(addr: SocketAddr) -> Result<()> {
     Ok(())
 }
 
-async fn start_http(addr: SocketAddr) -> Result<()> {
+async fn start_http(
+    addr: SocketAddr,
+    request_queue: RequestQueue,
+) -> Result<()> {
     tracing::info!("Starting HTTP server on {}", addr);
     let listener = TcpListener::bind(addr).await?;
 
@@ -29,8 +36,12 @@ async fn start_http(addr: SocketAddr) -> Result<()> {
         let (tcp_stream, _) = listener.accept().await?;
         let io = TokioIo::new(tcp_stream);
 
+        let request_queue = request_queue.clone();
+
         tokio::task::spawn(async move {
-            let service = service_fn(handle_request);
+            let service = service_fn(move |request| {
+                handle_request(request, request_queue.clone())
+            });
             if let Err(err) = http1::Builder::new()
                 .serve_connection(io, service)
                 .await {
@@ -44,6 +55,13 @@ async fn run(options: Options) -> Result<()> {
     let http_addr = options.http_addr;
     let grpc_addr = options.grpc_addr;
 
+    let request_queue: RequestQueue =
+        Arc::new(Mutex::new(VecDeque::new()));
+
+    let _ = REQUEST_QUEUE.set(request_queue.clone());
+
+    let http_queue = request_queue.clone();
+
     let grpc_task = tokio::spawn(async move {
         if let Err(e) = start_grpc(grpc_addr).await {
             tracing::error!("gRPC server finished with error: {}", e);
@@ -51,7 +69,7 @@ async fn run(options: Options) -> Result<()> {
     });
 
     let http_task = tokio::spawn(async move {
-        if let Err(e) = start_http(http_addr).await {
+        if let Err(e) = start_http(http_addr, http_queue).await {
             tracing::error!("HTTP server finished with error: {}", e);
         }
     });
@@ -93,3 +111,14 @@ pub fn start(options: Option<Options>) -> pyo3::PyResult<()> {
 
 #[cfg(not(feature = "python"))]
 pub use run as start;
+
+#[cfg(feature = "python")]
+#[pyo3::pyfunction]
+pub fn poll_request() -> Option<(String, usize)> {
+    let queue = REQUEST_QUEUE.get()?;
+
+    let mut queue = queue.lock().ok()?;
+    let request = queue.pop_front()?;
+
+    Some((request.prompt, request.max_tokens))
+}
