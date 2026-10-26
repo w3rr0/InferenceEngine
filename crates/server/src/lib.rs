@@ -13,6 +13,9 @@ pub mod pb {
     tonic::include_proto!("inference");
 }
 
+#[cfg(feature = "python")]
+pub use server::poll_request;
+
 pub fn init_tracing() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
