@@ -11,13 +11,9 @@ def main():
 
     start(options)
 
-    runner.add_request("The capital of France is", max_tokens=20)
-    runner.add_request("Once upon a time in a galaxy", max_tokens=100)
-    runner.add_request("List the planets in our solar system:", max_tokens=150)
+    print("[Main] Waiting for HTTP requests", flush=True)
 
-    print("[Main] Starting processing queue")
-
-    runner.run()
+    runner.run_forever()
 
 if __name__ == "__main__":
     main()
