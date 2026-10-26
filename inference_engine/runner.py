@@ -1,7 +1,9 @@
 import torch
+import time
 from transformers import PreTrainedTokenizerFast
 
 from inference_engine.core import Engine
+from inference_engine.server import poll_request
 from inference_engine.attention.flex import PagedKVCache
 from inference_engine.models.weights import load_llama_model
 
@@ -53,63 +55,95 @@ class EngineRunner:
         )
 
     @torch.inference_mode()
-    def run(self):
-        step = 0
+    def run_one_step(self):
+        batch = self.rust_engine.get_next()
+        if batch is None:
+            print("[Runner] All request stop because of lack of VRAM")
+            return
 
-        while self.rust_engine.has_unfinished_requests():
-            batch = self.rust_engine.get_next()
-            if batch is None:
-                print("[Runner] All request stop because of lack of VRAM")
-                break
+        req_ids, input_tokens, block_tables, seq_lens, is_prefill = batch
 
-            req_ids, input_tokens, block_tables, seq_lens, is_prefill = batch
+        flat_tokens_list = []
+        positions_list = []
 
-            flat_tokens_list = []
-            positions_list = []
+        for tokens, seq_len in zip(input_tokens, seq_lens):
+            flat_tokens_list.extend(tokens)
+            if is_prefill:
+                positions_list.extend(range(seq_len))
+            else:
+                positions_list.append(seq_len - 1)
 
-            for tokens, seq_len in zip(input_tokens, seq_lens):
-                flat_tokens_list.extend(tokens)
-                if is_prefill:
-                    positions_list.extend(range(seq_len))
-                else:
-                    positions_list.append(seq_len - 1)
+        flat_tokens = torch.tensor(
+            flat_tokens_list, dtype=torch.long, device=self.device
+        )
+        positions = torch.tensor(positions_list, dtype=torch.long, device=self.device)
 
-            flat_tokens = torch.tensor(flat_tokens_list, dtype=torch.long, device=self.device)
-            positions = torch.tensor(positions_list, dtype=torch.long, device=self.device)
+        logits = self.model(
+            flat_tokens, positions, self.kv_cache, block_tables, seq_lens, is_prefill
+        )
 
-            logits = self.model(
-                flat_tokens, positions, self.kv_cache, block_tables, seq_lens, is_prefill
+        temperature = 0.7
+        top_p = 0.9
+
+        if temperature <= 0:
+            next_tokens = torch.argmax(logits, dim=-1).tolist()
+        else:
+            scaled_logits = logits / temperature
+            probs = torch.softmax(scaled_logits, dim=-1)
+
+            sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+            cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+
+            sorted_indices_to_remove = cumulative_probs > top_p
+            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
+                ..., :-1
+            ].clone()
+            sorted_indices_to_remove[..., 0] = 0
+
+            indices_to_remove = sorted_indices_to_remove.scatter(
+                1, sorted_indices, sorted_indices_to_remove
+            )
+            scaled_logits[indices_to_remove] = float("-inf")
+
+            filtered_probs = torch.softmax(scaled_logits, dim=-1)
+            next_tokens = (
+                torch.multinomial(filtered_probs, num_samples=1).squeeze(-1).tolist()
             )
 
-            temperature = 0.7
-            top_p = 0.9
+        # Show live
+        if not is_prefill:
+            for req_id, token in zip(req_ids, next_tokens):
+                word = self.tokenizer.decode([token])
+                print(f"[Req {req_id}]: {word}", flush=True)
 
-            if temperature <= 0:
-                next_tokens = torch.argmax(logits, dim=-1).tolist()
-            else:
-                scaled_logits = logits / temperature
-                probs = torch.softmax(scaled_logits, dim=-1)
+        self.rust_engine.step(req_ids, next_tokens)
 
-                sorted_probs, sorted_indices = torch.sort(probs, descending=True)
-                cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+    def accept_request(self):
+        while True:
+            request = poll_request()
 
-                sorted_indices_to_remove = cumulative_probs > top_p
-                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                sorted_indices_to_remove[..., 0] = 0
+            if request is None:
+                break
 
-                indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                scaled_logits[indices_to_remove] = float('-inf')
+            prompt, max_tokens = request
 
-                filtered_probs = torch.softmax(scaled_logits, dim=-1)
-                next_tokens = torch.multinomial(filtered_probs, num_samples=1).squeeze(-1).tolist()
+            print(
+                f"[Runner] Received HTTP request: "
+                f"prompt={prompt!r}, max_tokens={max_tokens}",
+                flush=True,
+            )
 
-            # Show live
-            if not is_prefill:
-                for req_id, token in zip(req_ids, next_tokens):
-                    word = self.tokenizer.decode([token])
-                    print(f"[Req {req_id}]: {word}", flush=True)
+            self.add_request(
+                prompt_text=prompt,
+                max_tokens=max_tokens,
+            )
 
-            self.rust_engine.step(req_ids, next_tokens)
-            step += 1
+    def run_forever(self):
+        while True:
+            self.accept_request()
 
-        print(f"\n[Runner] Finished after {step} iterations")
+            if not self.rust_engine.has_unfinished_requests():
+                time.sleep(0.01)
+                continue
+
+            self.run_one_step()
