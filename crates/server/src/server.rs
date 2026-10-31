@@ -10,6 +10,7 @@ use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::net::TcpListener;
+use uuid::Uuid;
 
 static REQUEST_QUEUE: OnceLock<RequestQueue> = OnceLock::new();
 
@@ -114,11 +115,11 @@ pub use run as start;
 
 #[cfg(feature = "python")]
 #[pyo3::pyfunction]
-pub fn poll_request() -> Option<(String, usize)> {
+pub fn poll_request() -> Option<(Uuid, String, usize)> {
     let queue = REQUEST_QUEUE.get()?;
 
     let mut queue = queue.lock().ok()?;
     let request = queue.pop_front()?;
 
-    Some((request.prompt, request.max_tokens))
+    Some((request.id, request.prompt, request.max_tokens))
 }

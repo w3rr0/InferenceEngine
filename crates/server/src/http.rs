@@ -5,6 +5,7 @@ use serde::Deserialize;
 use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
 pub struct GenerateRequest {
@@ -20,6 +21,7 @@ fn default_max_tokens() -> usize {
 
 #[derive(Debug)]
 pub struct EngineRequest {
+    pub id: Uuid,
     pub prompt: String,
     pub max_tokens: usize,
 }
@@ -30,6 +32,8 @@ pub async fn handle_request(
     req: Request<hyper::body::Incoming>,
     request_queue: RequestQueue,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
+    let request_id = Uuid::new_v4();
+
     match (req.method(), req.uri().path()) {
         (&Method::POST, "/ping") => {
             let body_bytes = req
@@ -87,6 +91,7 @@ pub async fn handle_request(
             }
 
             let engine_request = EngineRequest {
+                id: request_id,
                 prompt: request.prompt,
                 max_tokens: request.max_tokens,
             };

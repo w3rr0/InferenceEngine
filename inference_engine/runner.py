@@ -125,11 +125,11 @@ class EngineRunner:
             if request is None:
                 break
 
-            prompt, max_tokens = request
+            request_id, prompt, max_tokens = request
 
             print(
                 f"[Runner] Received HTTP request: "
-                f"prompt={prompt!r}, max_tokens={max_tokens}",
+                f"id={request_id}, prompt={prompt!r}, max_tokens={max_tokens}",
                 flush=True,
             )
 
