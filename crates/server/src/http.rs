@@ -26,6 +26,13 @@ pub struct EngineRequest {
     pub max_tokens: usize,
 }
 
+#[derive(Debug)]
+pub struct GenerationChunk {
+    pub text: String,
+    pub is_finished: bool,
+}
+
+
 pub type RequestQueue = Arc<Mutex<VecDeque<EngineRequest>>>;
 
 pub async fn handle_request(
