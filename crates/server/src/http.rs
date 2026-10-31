@@ -1,11 +1,18 @@
 use http_body_util::{BodyExt, Full};
-use hyper::body::Bytes;
+use hyper::body::{Bytes, Frame};
 use hyper::{Method, Request, Response, StatusCode};
 use serde::Deserialize;
 use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
+use http_body_util::combinators::BoxBody;
+use tokio::sync::mpsc;
+use tonic::codegen::tokio_stream;
 use uuid::Uuid;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::StreamExt;
+
+const MEMORY_BUFFER_SIZE: usize = 128;
 
 #[derive(Debug, Deserialize)]
 pub struct GenerateRequest {
@@ -24,6 +31,7 @@ pub struct EngineRequest {
     pub id: Uuid,
     pub prompt: String,
     pub max_tokens: usize,
+    pub sender: mpsc::Sender<GenerationChunk>,
 }
 
 #[derive(Debug)]
@@ -38,7 +46,7 @@ pub type RequestQueue = Arc<Mutex<VecDeque<EngineRequest>>>;
 pub async fn handle_request(
     req: Request<hyper::body::Incoming>,
     request_queue: RequestQueue,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+) -> Result<Response<BoxBody<Bytes, Infallible>>, hyper::Error> {
     let request_id = Uuid::new_v4();
 
     match (req.method(), req.uri().path()) {
@@ -53,7 +61,7 @@ pub async fn handle_request(
             let msg = String::from_utf8_lossy(&body_bytes);
             tracing::info!(msg = %msg, "HTTP ping");
 
-            Ok(Response::new(Full::new(Bytes::from(format!("pong: {msg}")))))
+            Ok(Response::new(Full::new(Bytes::from(format!("pong: {msg}"))).boxed()))
         }
 
         (&Method::POST, "/chat/completions") => {
@@ -97,10 +105,13 @@ pub async fn handle_request(
                 ));
             }
 
+            let (tx, rx) = mpsc::channel::<GenerationChunk>(MEMORY_BUFFER_SIZE);
+
             let engine_request = EngineRequest {
-                id: request_id,
+                id: request_id.clone(),
                 prompt: request.prompt,
                 max_tokens: request.max_tokens,
+                sender: tx,
             };
             
             match request_queue.lock() {
@@ -118,14 +129,31 @@ pub async fn handle_request(
                 }
             }
 
-            let mut response = Response::new(Full::new(Bytes::from(
-                r#"{"status":"accepted"}"#,
-            )));
 
-            *response.status_mut() = StatusCode::ACCEPTED;
+            let stream = ReceiverStream::new(rx).map(|chunk| {
+                if chunk.is_finished {
+                    return Ok::<_, Infallible>(Frame::data(Bytes::from("data: [DONE]\n\n")));
+                }
+                let json = serde_json::json!({"choices": [{"delta": {"content": chunk.text}}]});
+                let sse_msg = format!("data: {}\n\n", json);
+                Ok::<_, Infallible>(Frame::data(Bytes::from(sse_msg)))
+            });
+
+            let body = http_body_util::StreamBody::new(stream).boxed();
+
+            let mut response = Response::new(body);
+            *response.status_mut() = StatusCode::OK;
             response.headers_mut().insert(
                 hyper::header::CONTENT_TYPE,
-                hyper::header::HeaderValue::from_static("application/json"),
+                hyper::header::HeaderValue::from_static("text/event-stream"),
+            );
+            response.headers_mut().insert(
+                hyper::header::CACHE_CONTROL,
+                hyper::header::HeaderValue::from_static("no-cache"),
+            );
+            response.headers_mut().insert(
+                hyper::header::CONNECTION,
+                hyper::header::HeaderValue::from_static("keep-alive"),
             );
 
             Ok(response)
@@ -133,7 +161,8 @@ pub async fn handle_request(
 
         // Unknown path
         _ => {
-            let mut not_found = Response::new(Full::new(Bytes::from("Not Found")));
+            let body = Full::new(Bytes::from("Not Found")).boxed();
+            let mut not_found = Response::new(body);
             *not_found.status_mut() = StatusCode::NOT_FOUND;
             Ok(not_found)
         }
@@ -143,11 +172,11 @@ pub async fn handle_request(
 fn json_error(
     status: StatusCode,
     message: &str,
-) -> Response<Full<Bytes>> {
-    let body = format!(r#"{{"error":"{}"}}"#, message);
+) -> Response<BoxBody<Bytes, Infallible>> {
+    let json_string = format!(r#"{{"error":"{}"}}"#, message);
+    let body = http_body_util::Full::new(Bytes::from(json_string)).boxed();
 
-    let mut response = Response::new(Full::new(Bytes::from(body)));
-
+    let mut response = Response::new(body);
     *response.status_mut() = status;
 
     response.headers_mut().insert(
