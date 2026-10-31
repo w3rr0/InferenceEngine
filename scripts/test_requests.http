@@ -1,5 +1,10 @@
-### GET request to example server
-GET https://examples.http-client.intellij.net/get
-    ?generated-in=PyCharm
+### Test Requests
+POST http://localhost:1000/chat/completions
+Content-Type: application/json
+
+{
+  "prompt": "Most beautiful city in Poland is ",
+  "max_tokens": 50
+}
 
 ###
