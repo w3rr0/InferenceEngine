@@ -1,5 +1,5 @@
 use crate::grpc::GenerationImpl;
-use crate::http::{handle_request, EngineRequest, RequestQueue};
+use crate::http::{handle_request, RequestQueue, GenerationChunk};
 use crate::pb::generation_server::GenerationServer;
 use crate::{Options, Result};
 
@@ -9,7 +9,10 @@ use hyper_util::rt::TokioIo;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, OnceLock};
+use pyo3::exceptions::PyConnectionAbortedError;
+use pyo3::{pyclass, pymethods, PyResult};
 use tokio::net::TcpListener;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 static REQUEST_QUEUE: OnceLock<RequestQueue> = OnceLock::new();
@@ -102,7 +105,7 @@ async fn run(options: Options) -> Result<()> {
 #[cfg(feature = "python")]
 #[pyo3::pyfunction]
 #[pyo3(signature = (options = None))]
-pub fn start(options: Option<Options>) -> pyo3::PyResult<()> {
+pub fn start(options: Option<Options>) -> PyResult<()> {
     let options = options.unwrap_or_default();
 
     std::thread::Builder::new()
@@ -134,11 +137,15 @@ pub use run as start;
 
 #[cfg(feature = "python")]
 #[pyo3::pyfunction]
-pub fn poll_request() -> Option<(Uuid, String, usize)> {
+pub fn poll_request() -> Option<(Uuid, String, usize, StreamCallback)> {
     let queue = REQUEST_QUEUE.get()?;
 
     let mut queue = queue.lock().ok()?;
     let request = queue.pop_front()?;
 
-    Some((request.id, request.prompt, request.max_tokens))
+    let callback = StreamCallback {
+        sender: request.sender,
+    };
+
+    Some((request.id, request.prompt, request.max_tokens, callback))
 }
