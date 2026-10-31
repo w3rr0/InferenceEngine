@@ -125,7 +125,7 @@ class EngineRunner:
             if request is None:
                 break
 
-            request_id, prompt, max_tokens = request
+            request_id, prompt, max_tokens, callback = request
 
             print(
                 f"[Runner] Received HTTP request: "
