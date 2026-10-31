@@ -11,6 +11,9 @@ __pycache__/
 .idea/
 .vscode/
 
+# Agents
+opencode.jsonc
+
 # only for now
 .github/
 
