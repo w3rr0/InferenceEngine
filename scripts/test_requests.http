@@ -1,6 +1,6 @@
 ### Test Requests
 POST http://localhost:1000/chat/completions
-Content-Type: application/json
+Content-Type: text/event-stream
 
 {
   "prompt": "Most beautiful city in Poland is ",
