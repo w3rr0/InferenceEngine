@@ -14,6 +14,25 @@ use uuid::Uuid;
 
 static REQUEST_QUEUE: OnceLock<RequestQueue> = OnceLock::new();
 
+#[cfg(feature = "python")]
+#[pyclass]
+pub struct StreamCallback {
+    pub sender: mpsc::Sender<GenerationChunk>,
+}
+
+#[pymethods]
+impl StreamCallback {
+    fn send_token(&self, text: String, is_finished: bool) -> PyResult<()>{
+        let chunk = GenerationChunk { text, is_finished };
+
+        if self.sender.blocking_send(chunk).is_err() {
+            return Err(PyConnectionAbortedError::new_err("Client disconnected"));
+        }
+
+        Ok(())
+    }
+}
+
 async fn start_grpc(addr: SocketAddr) -> Result<()> {
     tracing::info!("Starting GRPC server on {}", addr);
     let service = GenerationImpl::default();
