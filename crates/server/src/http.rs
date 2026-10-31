@@ -45,7 +45,7 @@ pub async fn handle_request(
             Ok(Response::new(Full::new(Bytes::from(format!("pong: {msg}")))))
         }
 
-        (&Method::POST, "/generate") => {
+        (&Method::POST, "/chat/completions") => {
             let body_bytes = match req.into_body().collect().await {
                 Ok(body) => body.to_bytes(),
 
