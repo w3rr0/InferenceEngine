@@ -14,7 +14,7 @@ pub mod pb {
 }
 
 #[cfg(feature = "python")]
-pub use server::poll_request;
+pub use server::{poll_request, StreamCallback};
 
 pub fn init_tracing() {
     let _ = tracing_subscriber::fmt()

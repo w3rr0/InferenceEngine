@@ -20,6 +20,9 @@ mod bindings {
         
         #[pymodule_export]
         use ::server::poll_request;
+
+        #[pymodule_export]
+        use ::server::StreamCallback;
     }
 
 }
