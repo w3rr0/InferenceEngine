@@ -131,11 +131,14 @@ pub async fn handle_request(
 
 
             let stream = ReceiverStream::new(rx).map(|chunk| {
-                if chunk.is_finished {
-                    return Ok::<_, Infallible>(Frame::data(Bytes::from("data: [DONE]\n\n")));
+                let mut sse_msg = String::new();
+                if !chunk.text.is_empty() {
+                    let json = serde_json::json!({"choices": [{"delta": {"content": chunk.text}}]});
+                    sse_msg.push_str(&format!("data: {}\n\n", json));
                 }
-                let json = serde_json::json!({"choices": [{"delta": {"content": chunk.text}}]});
-                let sse_msg = format!("data: {}\n\n", json);
+                if chunk.is_finished {
+                    sse_msg.push_str("data: [DONE]\n\n");
+                }
                 Ok::<_, Infallible>(Frame::data(Bytes::from(sse_msg)))
             });
 
@@ -174,7 +177,7 @@ fn json_error(
     message: &str,
 ) -> Response<BoxBody<Bytes, Infallible>> {
     let json_string = format!(r#"{{"error":"{}"}}"#, message);
-    let body = http_body_util::Full::new(Bytes::from(json_string)).boxed();
+    let body = Full::new(Bytes::from(json_string)).boxed();
 
     let mut response = Response::new(body);
     *response.status_mut() = status;
