@@ -1,6 +1,7 @@
 import torch
 import time
 from transformers import PreTrainedTokenizerFast
+from uuid import UUID
 
 from inference_engine.core import Engine
 from inference_engine.server import poll_request
@@ -46,9 +47,10 @@ class EngineRunner:
             device=self.device,
         )
 
-    def add_request(self, prompt_text: str, max_tokens: int = 512):
+    def add_request(self, request_id: UUID, prompt_text: str, max_tokens: int = 512):
         tokens = self.tokenizer.encode(prompt_text)
         self.rust_engine.add_request(
+            id=request_id,
             prompt=tokens,
             max_tokens=max_tokens,
             eos_token_id=self.tokenizer.eos_token_id,
@@ -134,6 +136,7 @@ class EngineRunner:
             )
 
             self.add_request(
+                request_id=request_id,
                 prompt_text=prompt,
                 max_tokens=max_tokens,
             )

@@ -2,12 +2,12 @@ use crate::memory::BlockAllocator;
 use crate::scheduler::{Scheduler, Request};
 
 use pyo3::prelude::*;
+use uuid::Uuid;
 
 #[pyclass(unsendable)]
 pub struct Engine {
     allocator: BlockAllocator,
     scheduler: Scheduler,
-    request_counter: u64,
 }
 
 #[pymethods]
@@ -17,14 +17,12 @@ impl Engine {
         Self {
             allocator: BlockAllocator::new(total_blocks, block_size),
             scheduler: Scheduler::new(max_batch_size),
-            request_counter: 0,
         }
     }
 
     /// Temporary method simulating the arrival of a new request
-    pub fn add_request(&mut self, prompt: Vec<u32>, max_tokens: usize, eos_token_id: u32) {
-        self.request_counter += 1;
-        let req = Request::new(self.request_counter, prompt, max_tokens, eos_token_id);
+    pub fn add_request(&mut self,id: Uuid, prompt: Vec<u32>, max_tokens: usize, eos_token_id: u32) {
+        let req = Request::new(id, prompt, max_tokens, eos_token_id);
         self.scheduler.add_request(req);
     }
 
@@ -34,7 +32,7 @@ impl Engine {
     }
 
     /// Returns a batch from the scheduler: (request_ids, input_tokens, block_tables, seq_lens, is_prefill)
-    pub fn get_next(&mut self) -> Option<(Vec<u64>, Vec<Vec<u32>>, Vec<Vec<u32>>, Vec<usize>, bool)> {
+    pub fn get_next(&mut self) -> Option<(Vec<Uuid>, Vec<Vec<u32>>, Vec<Vec<u32>>, Vec<usize>, bool)> {
         if let Some(batch) = self.scheduler.next_batch(&mut self.allocator) {
             Some((
                 batch.request_ids,
@@ -49,7 +47,7 @@ impl Engine {
     }
 
     /// Receives generated tokens from PyTorch model
-    pub fn step(&mut self, request_ids: Vec<u64>, new_tokens: Vec<u32>) {
+    pub fn step(&mut self, request_ids: Vec<Uuid>, new_tokens: Vec<u32>) {
         // Save generated token
         for (id, token) in request_ids.into_iter().zip(new_tokens.into_iter()) {
             if let Some(req) = self.scheduler.active.iter_mut().find(|r| r.id == id) {

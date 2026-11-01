@@ -1,3 +1,4 @@
+use uuid::Uuid;
 use crate::memory::BlockTable;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -9,7 +10,7 @@ pub enum RequestStatus {
 
 #[derive(Debug, Clone)]
 pub struct Request {
-    pub id: u64,
+    pub id: Uuid,
     pub prompt: Vec<u32>,
     pub generated_tokens: Vec<u32>,
     pub block_table: BlockTable,
@@ -19,7 +20,7 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn new(id: u64, prompt: Vec<u32>, max_tokens: usize, eos_token_id: u32) -> Self {
+    pub fn new(id: Uuid, prompt: Vec<u32>, max_tokens: usize, eos_token_id: u32) -> Self {
         Self {
             id,
             prompt,
