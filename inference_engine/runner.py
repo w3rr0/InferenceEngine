@@ -120,10 +120,13 @@ class EngineRunner:
         # Show live
         if not is_prefill:
             for req_id, token in zip(req_ids, next_tokens):
+                is_finished = req_id in result.finished
                 self.callbacks[req_id].send_token(
                     text = self.tokenizer.decode([token]),
-                    is_finished = token in result.finished
+                    is_finished = is_finished
                 )
+                if is_finished:
+                    del self.callbacks[req_id]
 
     def accept_request(self):
         while True:
