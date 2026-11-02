@@ -96,30 +96,7 @@ class EngineRunner:
         temperature = 0.7
         top_p = 0.9
 
-        if temperature <= 0:
-            next_tokens = torch.argmax(logits, dim=-1).tolist()
-        else:
-            scaled_logits = logits / temperature
-            probs = torch.softmax(scaled_logits, dim=-1)
-
-            sorted_probs, sorted_indices = torch.sort(probs, descending=True)
-            cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
-
-            sorted_indices_to_remove = cumulative_probs > top_p
-            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
-                ..., :-1
-            ].clone()
-            sorted_indices_to_remove[..., 0] = 0
-
-            indices_to_remove = sorted_indices_to_remove.scatter(
-                1, sorted_indices, sorted_indices_to_remove
-            )
-            scaled_logits[indices_to_remove] = float("-inf")
-
-            filtered_probs = torch.softmax(scaled_logits, dim=-1)
-            next_tokens = (
-                torch.multinomial(filtered_probs, num_samples=1).squeeze(-1).tolist()
-            )
+        next_tokens = self.sample_next_token(logits, temperature, top_p)
 
         result = self.rust_engine.step(req_ids, next_tokens)
 
@@ -133,6 +110,30 @@ class EngineRunner:
                 )
                 if is_finished:
                     del self.callbacks[req_id]
+
+    @torch.inference_mode()
+    def sample_next_token(
+            self,
+            logits: torch.Tensor,
+            temperature: float,
+            top_p: float
+    ) -> list[int]:
+        if temperature <= 0:
+            return logits.argmax(dim=-1).tolist()
+
+        logits = logits / temperature
+        sorted_logits, sorted_indices = torch.sort(logits, dim=-1, descending=True)
+        sorted_probs = torch.softmax(sorted_logits, dim=-1)
+        cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+
+        remove = cumulative_probs > top_p
+        remove[..., 1:] = remove[..., :-1].clone()
+        remove[..., 0] = False
+
+        probs = sorted_probs.masked_fill(remove, 0.0)
+        sampled = torch.multinomial(probs, num_samples=1)
+
+        return sorted_indices.gather(1, sampled).squeeze(1).tolist()
 
     def accept_request(self):
         while True:
