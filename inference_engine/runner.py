@@ -4,7 +4,7 @@ from transformers import PreTrainedTokenizerFast
 from uuid import UUID
 
 from inference_engine.core import Engine
-from inference_engine.server import poll_request
+from inference_engine.server import poll_request, StreamCallback
 from inference_engine.attention.flex import PagedKVCache
 from inference_engine.models.weights import load_llama_model
 
@@ -47,8 +47,11 @@ class EngineRunner:
             device=self.device,
         )
 
-    def add_request(self, request_id: UUID, prompt_text: str, max_tokens: int = 512):
+        self.callbacks: dict[UUID, StreamCallback] = {}
+
+    def add_request(self, request_id: UUID, prompt_text: str, callback: StreamCallback, max_tokens: int = 512):
         tokens = self.tokenizer.encode(prompt_text)
+        self.callbacks[request_id] = callback
         self.rust_engine.add_request(
             id=request_id,
             prompt=tokens,
@@ -112,13 +115,15 @@ class EngineRunner:
                 torch.multinomial(filtered_probs, num_samples=1).squeeze(-1).tolist()
             )
 
+        result = self.rust_engine.step(req_ids, next_tokens)
+
         # Show live
         if not is_prefill:
             for req_id, token in zip(req_ids, next_tokens):
-                word = self.tokenizer.decode([token])
-                print(f"[Req {req_id}]: {word}", flush=True)
-
-        self.rust_engine.step(req_ids, next_tokens)
+                self.callbacks[req_id].send_token(
+                    text = self.tokenizer.decode([token]),
+                    is_finished = token in result.finished
+                )
 
     def accept_request(self):
         while True:
@@ -139,6 +144,7 @@ class EngineRunner:
                 request_id=request_id,
                 prompt_text=prompt,
                 max_tokens=max_tokens,
+                callback=callback,
             )
 
     def run_forever(self):

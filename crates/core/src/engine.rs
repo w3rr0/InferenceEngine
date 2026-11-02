@@ -4,6 +4,12 @@ use crate::scheduler::{Scheduler, Request};
 use pyo3::prelude::*;
 use uuid::Uuid;
 
+#[pyclass]
+pub struct StepResult {
+    #[pyo3(get)]
+    pub finished: Vec<Uuid>,
+}
+
 #[pyclass(unsendable)]
 pub struct Engine {
     allocator: BlockAllocator,
@@ -46,14 +52,16 @@ impl Engine {
         }
     }
 
-    /// Receives generated tokens from PyTorch model
-    pub fn step(&mut self, request_ids: Vec<Uuid>, new_tokens: Vec<u32>) {
+    /// Receives generated tokens from PyTorch model and returns fnished request ids
+    pub fn step(&mut self, request_ids: Vec<Uuid>, new_tokens: Vec<u32>) -> StepResult {
         // Save generated token
         for (id, token) in request_ids.into_iter().zip(new_tokens.into_iter()) {
             if let Some(req) = self.scheduler.active.iter_mut().find(|r| r.id == id) {
                 req.generated_tokens.push(token);
             }
         }
+
+        let mut finished = Vec::new();
 
         // Manage memory and life cycle
         let mut i = 0;
@@ -62,8 +70,8 @@ impl Engine {
             if self.scheduler.active[i].is_finished() {
                 let mut req = self.scheduler.active.remove(i);
                 req.status = crate::scheduler::RequestStatus::Finished;
-
                 self.allocator.free_table(&req.block_table);
+                finished.push(req.id);
                 continue;
             }
 
@@ -92,5 +100,6 @@ impl Engine {
                 i += 1;
             }
         }
+        StepResult {finished}
     }
 }

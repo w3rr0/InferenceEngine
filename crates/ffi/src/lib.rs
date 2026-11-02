@@ -8,6 +8,9 @@ mod bindings {
     pub mod core {
         #[pymodule_export]
         use engine_core::engine::Engine;
+
+        #[pymodule_export]
+        use engine_core::engine::StepResult;
     }
     
     #[pymodule]
