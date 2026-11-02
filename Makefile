@@ -11,6 +11,9 @@ clean:
 	cargo clean
 	find . -path "./.venv" -prune -o \( -name "*.so" -o -name "*.pyd" -o -name "*.pyi" -o -name "__pycache__" \) -exec rm -rf {} +
 
+test:
+	cargo test
+
 format:
 	uvx ruff format
 
