@@ -3,9 +3,10 @@ import time
 from transformers import PreTrainedTokenizerFast
 from uuid import UUID
 
-from inference_engine.core import Engine
+from inference_engine.core import Engine, UuidSet
 from inference_engine.server import poll_request, StreamCallback
 from inference_engine.attention.flex import PagedKVCache
+from inference_engine.detokenizer import IncrementalDetokenizer
 from inference_engine.models.weights import load_llama_model
 
 
@@ -48,6 +49,7 @@ class EngineRunner:
         )
 
         self.callbacks: dict[UUID, StreamCallback] = {}
+        self.detokenizers: dict[UUID, IncrementalDetokenizer] = {}
 
     def add_request(self, request_id: UUID, prompt_text: str, callback: StreamCallback, max_tokens: int = 512):
         tokens = self.tokenizer.encode(prompt_text)
@@ -100,16 +102,7 @@ class EngineRunner:
 
         result = self.rust_engine.step(req_ids, next_tokens)
 
-        # Show live
-        if not is_prefill:
-            for req_id, token in zip(req_ids, next_tokens):
-                is_finished = req_id in result.finished
-                self.callbacks[req_id].send_token(
-                    text = self.tokenizer.decode([token]),
-                    is_finished = is_finished
-                )
-                if is_finished:
-                    del self.callbacks[req_id]
+        self._stream_generated_tokens(req_ids, next_tokens, result.finished)
 
     @torch.inference_mode()
     def sample_next_token(
@@ -134,6 +127,30 @@ class EngineRunner:
         sampled = torch.multinomial(probs, num_samples=1)
 
         return sorted_indices.gather(1, sampled).squeeze(1).tolist()
+
+    def _stream_generated_tokens(
+            self,
+            req_ids: list[UUID],
+            next_tokens: list[int],
+            finished: UuidSet,
+    ) -> None:
+        for req_id, token in zip(req_ids, next_tokens, strict=True):
+            is_finished = req_id in finished
+            detokenizer = self.detokenizers.get(req_id)
+            if detokenizer is None:
+                detokenizer = IncrementalDetokenizer(self.tokenizer)
+                self.detokenizers[req_id] = detokenizer
+            text = detokenizer.add(token)
+
+            if text or is_finished:
+                self.callbacks[req_id].send_token(
+                    text=text,
+                    is_finished=is_finished,
+                )
+
+            if is_finished:
+                del self.callbacks[req_id]
+                del self.detokenizers[req_id]
 
     def accept_request(self):
         while True:
