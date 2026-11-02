@@ -3,11 +3,38 @@ use crate::scheduler::{Scheduler, Request};
 
 use pyo3::prelude::*;
 use uuid::Uuid;
+use std::collections::HashSet;
+
+#[pyclass]
+pub struct UuidSet {
+    data: HashSet<Uuid>,
+}
+
+#[pymethods]
+impl UuidSet {
+    fn __contains__(&self, item: Uuid) -> bool {
+        self.data.contains(&item)
+    }
+}
+
+impl UuidSet {
+    pub fn from_vec(vec: Vec<Uuid>) -> Self {
+        Self {data: vec.into_iter().collect()}
+    }
+}
 
 #[pyclass]
 pub struct StepResult {
     #[pyo3(get)]
-    pub finished: Vec<Uuid>,
+    finished: Py<UuidSet>,
+}
+
+impl StepResult {
+    pub fn new(finished: Vec<Uuid>) -> Self {
+        Python::attach(|py| {
+            Self {finished: Py::new(py, UuidSet::from_vec(finished)).unwrap()}
+        })
+    }
 }
 
 #[pyclass(unsendable)]
@@ -100,6 +127,6 @@ impl Engine {
                 i += 1;
             }
         }
-        StepResult {finished}
+        StepResult::new(finished)
     }
 }

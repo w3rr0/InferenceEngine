@@ -11,6 +11,9 @@ mod bindings {
 
         #[pymodule_export]
         use engine_core::engine::StepResult;
+
+        #[pymodule_export]
+        use engine_core::engine::UuidSet;
     }
     
     #[pymodule]
