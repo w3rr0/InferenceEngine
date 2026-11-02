@@ -1,18 +1,22 @@
 use super::*;
 use crate::memory::BlockAllocator;
+use uuid::Uuid;
 
 #[test]
 fn test_scheduler_prefill_and_decode() {
     let mut allocator = BlockAllocator::new(100, 16);
     let mut scheduler = Scheduler::new(2);
 
-    scheduler.add_request(Request::new(1, vec![10, 20, 30], 100, 2));
-    scheduler.add_request(Request::new(2, vec![40; 20], 100, 2));
+    let id1 = Uuid::new_v4();
+    let id2 = Uuid::new_v4();
+
+    scheduler.add_request(Request::new(id1, vec![10, 20, 30], 100, 2));
+    scheduler.add_request(Request::new(id2, vec![40; 20], 100, 2));
 
     let prefill_batch = scheduler.next_batch(&mut allocator).unwrap();
 
     assert!(prefill_batch.is_prefill);
-    assert_eq!(prefill_batch.request_ids, vec![1, 2]);
+    assert_eq!(prefill_batch.request_ids, vec![id1, id2]);
     assert_eq!(prefill_batch.seq_lens, vec![3, 20]);
     assert_eq!(prefill_batch.input_tokens[0], vec![10, 20, 30]);
 
@@ -28,7 +32,7 @@ fn test_scheduler_prefill_and_decode() {
     let decode_batch = scheduler.next_batch(&mut allocator).unwrap();
 
     assert!(!decode_batch.is_prefill);
-    assert_eq!(decode_batch.request_ids, vec![1, 2]);
+    assert_eq!(decode_batch.request_ids, vec![id1, id2]);
     assert_eq!(decode_batch.seq_lens, vec![4, 21]);
     assert_eq!(decode_batch.input_tokens[0], vec![99]);
     assert_eq!(decode_batch.input_tokens[1], vec![88]);
