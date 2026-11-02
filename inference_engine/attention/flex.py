@@ -27,7 +27,7 @@ def paged_attention(
     v: torch.Tensor,          # [total_tokens, num_kv_heads, head_dim]
     kv_cache: PagedKVCache,
     layer_idx: int,
-    block_tables: list[list[int]],
+    block_tables: list[torch.Tensor],
     seq_lens: list[int],
     is_prefill: bool,
 ) -> torch.Tensor:
@@ -50,11 +50,11 @@ def paged_attention(
             token_offset += seq_len
 
             # Saves prompt tokens to assigned physical blocks
-            for pos in range(seq_len):
-                block_id = block_table[pos // block_size]
-                block_offset = pos % block_size
-                k_layer[block_id, block_offset] = k_req[pos]
-                v_layer[block_id, block_offset] = v_req[pos]
+            positions = torch.arange(seq_len, device=q.device)
+            block_ids = block_table[positions // block_size]
+            block_offsets = positions % block_size
+            k_layer[block_ids, block_offsets] = k_req
+            v_layer[block_ids, block_offsets] = v_req
 
             # Calculate causal attention for prompt
             # [seq_len, num_heads, head_dim] -> [1, num_heads, seq_len, head_dim]
@@ -83,10 +83,8 @@ def paged_attention(
             v_layer[target_block, target_offset] = v_req
 
             # Gather full K and V history from every request block
-            blocks_tensor = torch.tensor(block_table, dtype=torch.long, device=q.device)
-            # Extract the blocks and flatten them to [max_tokens_in_blocks, num_kv_heads, head_dim]
-            k_history = k_layer[blocks_tensor].view(-1, k.size(1), k.size(2))[:seq_len]
-            v_history = v_layer[blocks_tensor].view(-1, v.size(1), v.size(2))[:seq_len]
+            k_history = k_layer[block_table].view(-1, k.size(1), k.size(2))[:seq_len]
+            v_history = v_layer[block_table].view(-1, v.size(1), v.size(2))[:seq_len]
 
             q_sdpa = q_req.transpose(0, 1).unsqueeze(0)        # [1, num_heads, 1, head_dim]
             k_sdpa = k_history.transpose(0, 1).unsqueeze(0)    # [1, num_kv_heads, seq_len, head_dim]

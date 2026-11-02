@@ -68,7 +68,7 @@ class LlamaAttention(nn.Module):
         rope: RotaryEmbedding,
         positions: torch.Tensor,
         kv_cache: PagedKVCache,
-        block_tables: list[list[int]],
+        block_tables: list[torch.Tensor],
         seq_lens: list[int],
         is_prefill: bool,
     ) -> torch.Tensor:
@@ -98,7 +98,7 @@ class LlamaDecoderLayer(nn.Module):
         rope: RotaryEmbedding,
         positions: torch.Tensor,
         kv_cache: PagedKVCache,
-        block_tables: list[list[int]],
+        block_tables: list[torch.Tensor],
         seq_lens: list[int],
         is_prefill: bool,
     ) -> torch.Tensor:
@@ -130,7 +130,7 @@ class LlamaForCausalLM(nn.Module):
         flat_tokens: torch.Tensor,
         positions: torch.Tensor,
         kv_cache: PagedKVCache,
-        block_tables: list[list[int]],
+        block_tables: list[torch.Tensor],
         seq_lens: list[int],
         is_prefill: bool,
     ) -> torch.Tensor:

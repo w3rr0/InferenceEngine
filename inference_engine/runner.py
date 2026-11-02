@@ -68,6 +68,12 @@ class EngineRunner:
 
         req_ids, input_tokens, block_tables, seq_lens, is_prefill = batch
 
+        # Convert block tables to device tensors
+        block_tables = [
+            torch.tensor(table, dtype=torch.long, device=self.device)
+            for table in block_tables
+        ]
+
         flat_tokens_list = []
         positions_list = []
 
