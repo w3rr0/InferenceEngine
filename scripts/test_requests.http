@@ -1,10 +1,19 @@
-### Test Requests
+### Test Requests - stream
 POST http://localhost:1000/chat/completions
 Content-Type: text/event-stream
 
 {
   "prompt": "Most beautiful city in Poland is ",
-  "max_tokens": 50
+  "max_tokens": 50,
+  "stream": true
 }
 
-###
+### Test Request - no stream
+POST http://localhost:1000/chat/completions
+Content-Type: application/json
+
+{
+  "prompt": "Most beautiful city in Poland is ",
+  "max_tokens": 50,
+  "stream": false
+}
