@@ -18,12 +18,19 @@ const MEMORY_BUFFER_SIZE: usize = 128;
 pub struct GenerateRequest {
     pub prompt: String,
 
+    #[serde(default = "default_stream")]
+    pub stream: bool,
+
     #[serde(default = "default_max_tokens")]
     pub max_tokens: usize,
 }
 
 fn default_max_tokens() -> usize {
     512
+}
+
+fn default_stream() -> bool {
+    false
 }
 
 #[derive(Debug)]
@@ -105,7 +112,7 @@ pub async fn handle_request(
                 ));
             }
 
-            let (tx, rx) = mpsc::channel::<GenerationChunk>(MEMORY_BUFFER_SIZE);
+            let (tx, mut rx) = mpsc::channel::<GenerationChunk>(MEMORY_BUFFER_SIZE);
 
             let engine_request = EngineRequest {
                 id: request_id.clone(),
@@ -129,37 +136,87 @@ pub async fn handle_request(
                 }
             }
 
+            if request.stream {
+                let stream = ReceiverStream::new(rx).map(|chunk| {
+                    let mut sse_msg = String::new();
+                    if !chunk.text.is_empty() {
+                        let json = serde_json::json!({"choices": [{"delta": {"content": chunk.text}}]});
+                        sse_msg.push_str(&format!("data: {}\n\n", json));
+                    }
+                    if chunk.is_finished {
+                        sse_msg.push_str("data: [DONE]\n\n");
+                    }
+                    Ok::<_, Infallible>(Frame::data(Bytes::from(sse_msg)))
+                });
 
-            let stream = ReceiverStream::new(rx).map(|chunk| {
-                let mut sse_msg = String::new();
-                if !chunk.text.is_empty() {
-                    let json = serde_json::json!({"choices": [{"delta": {"content": chunk.text}}]});
-                    sse_msg.push_str(&format!("data: {}\n\n", json));
+                let body = http_body_util::StreamBody::new(stream).boxed();
+
+                let mut response = Response::new(body);
+                *response.status_mut() = StatusCode::OK;
+                response.headers_mut().insert(
+                    hyper::header::CONTENT_TYPE,
+                    hyper::header::HeaderValue::from_static("text/event-stream"),
+                );
+                response.headers_mut().insert(
+                    hyper::header::CACHE_CONTROL,
+                    hyper::header::HeaderValue::from_static("no-cache"),
+                );
+                response.headers_mut().insert(
+                    hyper::header::CONNECTION,
+                    hyper::header::HeaderValue::from_static("keep-alive"),
+                );
+
+                Ok(response)
+            } else {
+                let mut full_text = String::new();
+                let mut completed = false;
+
+                while let Some(chunk) = rx.recv().await {
+                    full_text.push_str(&chunk.text);
+
+                    if chunk.is_finished {
+                        completed = true;
+                        break;
+                    }
                 }
-                if chunk.is_finished {
-                    sse_msg.push_str("data: [DONE]\n\n");
+
+                if !completed {
+                    tracing::error!(
+                        request_id = %request_id,
+                        "Generation channel closed before completion"
+                    );
+
+                    return Ok(json_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Generation channel closed before completion",
+                    ));
                 }
-                Ok::<_, Infallible>(Frame::data(Bytes::from(sse_msg)))
-            });
 
-            let body = http_body_util::StreamBody::new(stream).boxed();
+                let response_body = serde_json::json!({
+                    "id": request_id.to_string(),
+                    "object": "chat.completion",
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": full_text
+                        },
+                        "finish_reason": "stop"
+                    }]
+                });
 
-            let mut response = Response::new(body);
-            *response.status_mut() = StatusCode::OK;
-            response.headers_mut().insert(
-                hyper::header::CONTENT_TYPE,
-                hyper::header::HeaderValue::from_static("text/event-stream"),
-            );
-            response.headers_mut().insert(
-                hyper::header::CACHE_CONTROL,
-                hyper::header::HeaderValue::from_static("no-cache"),
-            );
-            response.headers_mut().insert(
-                hyper::header::CONNECTION,
-                hyper::header::HeaderValue::from_static("keep-alive"),
-            );
+                let body = Full::new(Bytes::from(response_body.to_string())).boxed();
 
-            Ok(response)
+                let mut response = Response::new(body);
+                *response.status_mut() = StatusCode::OK;
+
+                response.headers_mut().insert(
+                    hyper::header::CONTENT_TYPE,
+                    hyper::header::HeaderValue::from_static("application/json"),
+                );
+
+                Ok(response)
+            }
         }
 
         // Unknown path
