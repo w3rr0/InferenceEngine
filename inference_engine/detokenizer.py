@@ -1,6 +1,6 @@
 from typing import cast
 
-from transformers import PreTrainedTokenizerFast  # TODO: should be lazy import
+lazy from transformers import PreTrainedTokenizerFast
 
 
 class IncrementalDetokenizer:

@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import LlamaConfig
+lazy from transformers import LlamaConfig
 
-from inference_engine.attention.flex import PagedKVCache, paged_attention
+from inference_engine.attention.flex import paged_attention
+lazy from inference_engine.attention.flex import PagedKVCache
 
 
 class RotaryEmbedding(nn.Module):

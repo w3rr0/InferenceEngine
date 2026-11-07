@@ -1,10 +1,12 @@
 import torch
 import time
 from transformers import PreTrainedTokenizerFast
-from uuid import UUID
+lazy from uuid import UUID
 
-from inference_engine.core import Engine, UuidSet
-from inference_engine.server import poll_request, StreamCallback
+from inference_engine.core import Engine
+lazy from inference_engine.core import UuidSet
+from inference_engine.server import poll_request
+lazy from inference_engine.server import StreamCallback
 from inference_engine.attention.flex import PagedKVCache
 from inference_engine.detokenizer import IncrementalDetokenizer
 from inference_engine.models.weights import load_llama_model
